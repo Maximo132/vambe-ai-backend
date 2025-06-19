@@ -1,28 +1,41 @@
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy import Column, Integer, DateTime, func
 from datetime import datetime
+from sqlalchemy import Column, DateTime, func
+from sqlalchemy.ext.declarative import declared_attr
 
-Base = declarative_base()
+from ..db.base_class import Base as BaseModel
 
-class BaseModel:
-    """Base model with common fields and methods for all models"""
+class Base(BaseModel):
+    """
+    Clase base para todos los modelos con campos comunes.
+    Hereda de Base que ya incluye id y métodos comunes.
+    """
     __abstract__ = True
     
-    id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    @declared_attr
-    def __tablename__(cls):
-        """
-        Generate __tablename__ automatically.
-        Converts CamelCase class name to snake_case table name.
-        """
-        return ''.join(['_'+i.lower() if i.isupper() else i for i in cls.__name__]).lstrip('_')
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     def to_dict(self):
-        """Convert model instance to dictionary"""
-        return {
-            column.name: getattr(self, column.name) 
-            for column in self.__table__.columns
-        }
+        """
+        Convierte el modelo a un diccionario.
+        
+        Returns:
+            dict: Diccionario con los atributos del modelo
+        """
+        result = super().to_dict()
+        # Convertir campos datetime a string ISO format
+        for key, value in result.items():
+            if isinstance(value, datetime):
+                result[key] = value.isoformat()
+        return result
+    
+    def update(self, **kwargs):
+        """
+        Actualiza los atributos del modelo con los valores proporcionados.
+        
+        Args:
+            **kwargs: Atributos a actualizar
+        """
+        for key, value in kwargs.items():
+            if hasattr(self, key) and value is not None:
+                setattr(self, key, value)
+        return self

@@ -37,9 +37,17 @@ class Settings(BaseSettings):
         "DATABASE_URL", 
         "postgresql://postgres:postgres@localhost:5432/vambeai"
     )
+    ASYNC_DATABASE_URL: str = os.getenv(
+        "ASYNC_DATABASE_URL", 
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/vambeai"
+    )
     TEST_DATABASE_URL: str = os.getenv(
         "TEST_DATABASE_URL", 
         "postgresql://postgres:postgres@localhost:5432/vambeai_test"
+    )
+    TEST_ASYNC_DATABASE_URL: str = os.getenv(
+        "TEST_ASYNC_DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/vambeai_test"
     )
     
     # Configuración de autenticación

@@ -1,5 +1,6 @@
 from .base import Base, BaseModel
-from .chat import Conversation, Message, ConversationStatus, MessageRole
+from .conversation import Conversation
+from .message import Message, MessageRole
 from .document import Document
 from .user import User, UserRole
 from .login_history import LoginHistory
@@ -11,7 +12,6 @@ __all__ = [
     "BaseModel", 
     "Conversation", 
     "Message", 
-    "ConversationStatus", 
     "MessageRole",
     "Document",
     "User",
@@ -21,7 +21,8 @@ __all__ = [
 ]
 
 # Importar todos los modelos para que SQLAlchemy los conozca
-from .chat import Conversation, Message
+from .conversation import Conversation
+from .message import Message
 from .document import Document
 from .user import User
 from .login_history import LoginHistory
