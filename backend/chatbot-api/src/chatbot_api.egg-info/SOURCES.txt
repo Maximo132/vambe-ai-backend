@@ -1,0 +1,14 @@
+setup.py
+src/app/__init__.py
+src/app/main.py
+src/app/db/__init__.py
+src/app/db/base.py
+src/app/db/session.py
+src/app/models/__init__.py
+src/app/models/base.py
+src/app/models/chat.py
+src/chatbot_api.egg-info/PKG-INFO
+src/chatbot_api.egg-info/SOURCES.txt
+src/chatbot_api.egg-info/dependency_links.txt
+src/chatbot_api.egg-info/requires.txt
+src/chatbot_api.egg-info/top_level.txt

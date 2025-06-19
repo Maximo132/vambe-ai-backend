@@ -1,0 +1,44 @@
+2025-06-19 10:32:34,190 - INFO - Iniciando prueba de inserción de datos...
+2025-06-19 10:32:35,561 - INFO - select pg_catalog.version()
+2025-06-19 10:32:35,561 - INFO - [raw sql] {}
+2025-06-19 10:32:35,569 - INFO - select current_schema()
+2025-06-19 10:32:35,570 - INFO - [raw sql] {}
+2025-06-19 10:32:35,577 - INFO - show standard_conforming_strings
+2025-06-19 10:32:35,578 - INFO - [raw sql] {}
+2025-06-19 10:32:35,582 - INFO - BEGIN (implicit)
+2025-06-19 10:32:35,583 - INFO - 
+                    INSERT INTO conversations (title, status, user_id, metadata, created_at, updated_at)
+                    VALUES (%(title)s, %(status)s, %(user_id)s, %(metadata)s, %(created_at)s, %(updated_at)s)
+                    RETURNING id
+                    
+2025-06-19 10:32:35,584 - INFO - [generated in 0.00101s] {'title': 'Primera conversación', 'status': 'active', 'user_id': 'usuario1', 'metadata': '{"tags": ["importante", "cliente_nuevo"]}', 'created_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 582668), 'updated_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 582668)}
+2025-06-19 10:32:35,667 - INFO - Conversación insertada con ID: 1
+2025-06-19 10:32:35,669 - INFO - 
+                        INSERT INTO messages (content, role, conversation_id, metadata, created_at, updated_at)
+                        VALUES (%(content)s, %(role)s, %(conversation_id)s, %(metadata)s, %(created_at)s, %(updated_at)s)
+                        RETURNING id
+                        
+2025-06-19 10:32:35,670 - INFO - [generated in 0.00107s] {'content': 'Hola, ¿cómo estás?', 'role': 'user', 'conversation_id': 1, 'metadata': '{}', 'created_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 668582), 'updated_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 668582)}
+2025-06-19 10:32:35,714 - INFO - Mensaje insertado con ID: 1
+2025-06-19 10:32:35,715 - INFO - 
+                        INSERT INTO messages (content, role, conversation_id, metadata, created_at, updated_at)
+                        VALUES (%(content)s, %(role)s, %(conversation_id)s, %(metadata)s, %(created_at)s, %(updated_at)s)
+                        RETURNING id
+                        
+2025-06-19 10:32:35,716 - INFO - [cached since 0.04759s ago] {'content': '¡Hola! Estoy bien, gracias por preguntar. ¿En qué puedo ayudarte hoy?', 'role': 'assistant', 'conversation_id': 1, 'metadata': '{}', 'created_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 668582), 'updated_at': datetime.datetime(2025, 6, 19, 16, 32, 35, 668582)}
+2025-06-19 10:32:35,722 - INFO - Mensaje insertado con ID: 2
+2025-06-19 10:32:35,723 - INFO - COMMIT
+2025-06-19 10:32:35,733 - INFO - Datos insertados correctamente
+2025-06-19 10:32:35,733 - INFO - 
+Datos de la conversación:
+2025-06-19 10:32:35,735 - INFO - BEGIN (implicit)
+2025-06-19 10:32:35,736 - INFO - SELECT * FROM conversations WHERE id = %(id)s
+2025-06-19 10:32:35,736 - INFO - [generated in 0.00154s] {'id': 1}
+2025-06-19 10:32:35,755 - INFO - Conversación: (1, 'Primera conversación', 'active', 'usuario1', {'tags': ['importante', 'cliente_nuevo']}, datetime.datetime(2025, 6, 19, 16, 32, 35, 582668), datetime.datetime(2025, 6, 19, 16, 32, 35, 582668))
+2025-06-19 10:32:35,756 - INFO - 
+Mensajes de la conversación:
+2025-06-19 10:32:35,757 - INFO - SELECT id, role, content FROM messages WHERE conversation_id = %(conv_id)s
+2025-06-19 10:32:35,757 - INFO - [generated in 0.00109s] {'conv_id': 1}
+2025-06-19 10:32:35,762 - INFO -   - USER: Hola, ¿cómo estás?...
+2025-06-19 10:32:35,763 - INFO -   - ASSISTANT: ¡Hola! Estoy bien, gracias por preguntar. ¿En qué ...
+2025-06-19 10:32:35,763 - INFO - ROLLBACK

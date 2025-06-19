@@ -1,0 +1,56 @@
+====================================================================================================
+ANÁLISIS DE LA BASE DE DATOS - 2025-06-19 10:45:33
+====================================================================================================
+
+Se encontraron 2 tablas en la base de datos:
+====================================================================================================
+
+--------------------------------------- TABLA: conversations ---------------------------------------
+
+  COLUMNAS (7):
+  ------------------------------------------------------------------------------------------
+  Nombre                    Tipo                           Nulo  Clave Primaria  Valor por defecto
+  ------------------------------------------------------------------------------------------
+  id                        INTEGER                        No    No              SEQUENCE
+  title                     VARCHAR(255)                   No    No              None
+  status                    VARCHAR(20)                    No    No              None
+  user_id                   VARCHAR(255)                   No    No              None
+  metadata                  JSONB                          Sí    No              None
+  created_at                TIMESTAMP                      Sí    No              CURRENT_TIMESTAMP
+  updated_at                TIMESTAMP                      Sí    No              CURRENT_TIMESTAMP
+
+  ÍNDICES (1):
+  ------------------------------------------------------------------------------------------
+  Nombre                         Columnas                                 Único      Tipo
+  ------------------------------------------------------------------------------------------
+  idx_conversations_user_id      user_id                                  No         BTREE
+
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------- TABLA: messages ------------------------------------------
+
+  COLUMNAS (7):
+  ------------------------------------------------------------------------------------------
+  Nombre                    Tipo                           Nulo  Clave Primaria  Valor por defecto
+  ------------------------------------------------------------------------------------------
+  id                        INTEGER                        No    No              SEQUENCE
+  content                   TEXT                           No    No              None
+  role                      VARCHAR(20)                    No    No              None
+  conversation_id           INTEGER                        No    No              None
+  metadata                  JSONB                          Sí    No              None
+  created_at                TIMESTAMP                      Sí    No              CURRENT_TIMESTAMP
+  updated_at                TIMESTAMP                      Sí    No              CURRENT_TIMESTAMP
+
+  CLAVES FORÁNEAS (1):
+  ------------------------------------------------------------------------------------------
+  Columna                   Referencia                                         On Delete       On Update
+  ------------------------------------------------------------------------------------------
+  conversation_id           conversations(id)                                  NO ACTION       NO ACTION
+
+  ÍNDICES (1):
+  ------------------------------------------------------------------------------------------
+  Nombre                         Columnas                                 Único      Tipo
+  ------------------------------------------------------------------------------------------
+  idx_messages_conversation_id   conversation_id                          No         BTREE
+
+----------------------------------------------------------------------------------------------------

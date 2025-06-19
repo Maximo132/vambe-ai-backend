@@ -1,0 +1,21 @@
+2025-06-19 10:43:01,996 - __main__ - INFO - Iniciando verificación...
+2025-06-19 10:43:03,241 - app.db.base - INFO - Configurando conexión a la base de datos: postgresql+psycopg2://chatbot_user:*****@localhost:5432/chatbot_db
+2025-06-19 10:43:03,448 - app.db.base - INFO - Conexión a la base de datos configurada correctamente
+2025-06-19 10:43:03,450 - __main__ - ERROR - Error al verificar la base de datos: Textual SQL expression 'SELECT version()' should be explicitly declared as text('SELECT version()')
+Traceback (most recent call last):
+  File "C:\flow\backend\chatbot-api\check_alembic.py", line 34, in check_database
+    result = session.execute("SELECT version()")
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\orm\session.py", line 2149, in _execute_internal
+    statement = coercions.expect(roles.StatementRole, statement)
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\sql\coercions.py", line 395, in expect
+    resolved = impl._literal_coercion(
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\sql\coercions.py", line 621, in _literal_coercion
+    return self._text_coercion(element, argname, **kw)
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\sql\coercions.py", line 614, in _text_coercion
+    return _no_text_coercion(element, argname)
+  File "C:\Users\maxva\AppData\Local\Programs\Python\Python39\lib\site-packages\sqlalchemy\sql\coercions.py", line 584, in _no_text_coercion
+    raise exc_cls(
+sqlalchemy.exc.ArgumentError: Textual SQL expression 'SELECT version()' should be explicitly declared as text('SELECT version()')
+2025-06-19 10:43:03,465 - __main__ - ERROR - Error al verificar la base de datos

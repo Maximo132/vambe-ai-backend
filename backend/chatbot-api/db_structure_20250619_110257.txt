@@ -1,0 +1,179 @@
+﻿=== ESTRUCTURA DE LA BASE DE DATOS ===
+Generado el: 2025-06-19 11:02:57
+
+
+=== TABLAS EN LA BASE DE DATOS ===
+  table_name   
+---------------
+ conversations
+ messages
+(2 rows)
+
+
+=== ESTRUCTURA DE LA TABLA 'table_name' ===
+docker : Did not find any 
+relation named "table_name".
+En C:\flow\backend\chatbot-a
+pi\get_db_structure_to_file.
+ps1: 12 Carácter: 15
++ ...   $result = docker 
+exec -i chatbot-postgres 
+psql -U chatbot_user -d c 
+...
++                 ~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (Did n  
+  ot find an...d "table_n   
+ ame".:String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+
+=== ESTRUCTURA DE LA TABLA 'conversations' ===
+                                                                   Table "public.conversations"
+   Column   |            Type             | Collation | Nullable |                  Default                  | Storage  | Compression | Stats target | Description 
+------------+-----------------------------+-----------+----------+-------------------------------------------+----------+-------------+--------------+-------------
+ id         | integer                     |           | not null | nextval('conversations_id_seq'::regclass) | plain    |             |              | 
+ title      | character varying(255)      |           | not null |                                           | extended |             |              | 
+ status     | character varying(20)       |           | not null |                                           | extended |             |              | 
+ user_id    | character varying(255)      |           | not null |                                           | extended |             |              | 
+ metadata   | jsonb                       |           |          |                                           | extended |             |              | 
+ created_at | timestamp without time zone |           |          | CURRENT_TIMESTAMP                         | plain    |             |              | 
+ updated_at | timestamp without time zone |           |          | CURRENT_TIMESTAMP                         | plain    |             |              | 
+Indexes:
+    "conversations_pkey" PRIMARY KEY, btree (id)
+    "idx_conversations_user_id" btree (user_id)
+Referenced by:
+    TABLE "messages" CONSTRAINT "messages_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+Access method: heap
+
+
+=== ESTRUCTURA DE LA TABLA 'messages' ===
+                                                                      Table "public.messages"
+     Column      |            Type             | Collation | Nullable |               Default                | Storage  | Compression | Stats target | Description 
+-----------------+-----------------------------+-----------+----------+--------------------------------------+----------+-------------+--------------+-------------
+ id              | integer                     |           | not null | nextval('messages_id_seq'::regclass) | plain    |             |              | 
+ content         | text                        |           | not null |                                      | extended |             |              | 
+ role            | character varying(20)       |           | not null |                                      | extended |             |              | 
+ conversation_id | integer                     |           | not null |                                      | plain    |             |              | 
+ metadata        | jsonb                       |           |          |                                      | extended |             |              | 
+ created_at      | timestamp without time zone |           |          | CURRENT_TIMESTAMP                    | plain    |             |              | 
+ updated_at      | timestamp without time zone |           |          | CURRENT_TIMESTAMP                    | plain    |             |              | 
+Indexes:
+    "messages_pkey" PRIMARY KEY, btree (id)
+    "idx_messages_conversation_id" btree (conversation_id)
+Foreign-key constraints:
+    "messages_conversation_id_fkey" FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+Access method: heap
+
+
+=== CLAVES PRIMARIAS ===
+        table_name        | column_name  
+--------------------------+--------------
+ conversations            | id
+ messages                 | id
+ pg_aggregate             | aggfnoid
+ pg_am                    | oid
+ pg_amop                  | oid
+ pg_amproc                | oid
+ pg_attrdef               | oid
+ pg_attribute             | attrelid
+ pg_attribute             | attnum
+ pg_auth_members          | roleid
+ pg_auth_members          | member
+ pg_authid                | oid
+ pg_cast                  | oid
+ pg_class                 | oid
+ pg_collation             | oid
+ pg_constraint            | oid
+ pg_conversion            | oid
+ pg_database              | oid
+ pg_db_role_setting       | setdatabase
+ pg_db_role_setting       | setrole
+ pg_default_acl           | oid
+ pg_description           | objoid
+ pg_description           | classoid
+ pg_description           | objsubid
+ pg_enum                  | oid
+ pg_event_trigger         | oid
+ pg_extension             | oid
+ pg_foreign_data_wrapper  | oid
+ pg_foreign_server        | oid
+ pg_foreign_table         | ftrelid
+ pg_index                 | indexrelid
+ pg_inherits              | inhrelid
+ pg_inherits              | inhseqno
+ pg_init_privs            | objoid
+ pg_init_privs            | classoid
+ pg_init_privs            | objsubid
+ pg_language              | oid
+ pg_largeobject           | loid
+ pg_largeobject           | pageno
+ pg_largeobject_metadata  | oid
+ pg_namespace             | oid
+ pg_opclass               | oid
+ pg_operator              | oid
+ pg_opfamily              | oid
+ pg_parameter_acl         | oid
+ pg_partitioned_table     | partrelid
+ pg_policy                | oid
+ pg_proc                  | oid
+ pg_publication           | oid
+ pg_publication_namespace | oid
+ pg_publication_rel       | oid
+ pg_range                 | rngtypid
+ pg_replication_origin    | roident
+ pg_rewrite               | oid
+ pg_seclabel              | objoid
+ pg_seclabel              | classoid
+ pg_seclabel              | objsubid
+ pg_seclabel              | provider
+ pg_sequence              | seqrelid
+ pg_shdescription         | objoid
+ pg_shdescription         | classoid
+ pg_shseclabel            | objoid
+ pg_shseclabel            | classoid
+ pg_shseclabel            | provider
+ pg_statistic             | starelid
+ pg_statistic             | staattnum
+ pg_statistic             | stainherit
+ pg_statistic_ext         | oid
+ pg_statistic_ext_data    | stxoid
+ pg_statistic_ext_data    | stxdinherit
+ pg_subscription          | oid
+ pg_subscription_rel      | srrelid
+ pg_subscription_rel      | srsubid
+ pg_tablespace            | oid
+ pg_transform             | oid
+ pg_trigger               | oid
+ pg_ts_config             | oid
+ pg_ts_config_map         | mapcfg
+ pg_ts_config_map         | maptokentype
+ pg_ts_config_map         | mapseqno
+ pg_ts_dict               | oid
+ pg_ts_parser             | oid
+ pg_ts_template           | oid
+ pg_type                  | oid
+ pg_user_mapping          | oid
+(85 rows)
+
+
+=== CLAVES FORÃNEAS ===
+ tabla_origen | columna_origen  | tabla_referenciada | columna_referenciada | on_delete | on_update 
+--------------+-----------------+--------------------+----------------------+-----------+-----------
+ messages     | conversation_id | conversations      | id                   | CASCADE   | NO ACTION
+(1 row)
+
+
+=== ÃNDICES ===
+  table_name   |          index_name          |   column_name   | es_unico | es_primario 
+---------------+------------------------------+-----------------+----------+-------------
+ conversations | conversations_pkey           | id              | S├â┬¡      | S├â┬¡
+ conversations | idx_conversations_user_id    | user_id         | No       | No
+ messages      | idx_messages_conversation_id | conversation_id | No       | No
+ messages      | messages_pkey                | id              | S├â┬¡      | S├â┬¡
+(4 rows)
+

@@ -1,0 +1,22 @@
+2025-06-19 10:15:13,768 - INFO - Conectando a la base de datos...
+2025-06-19 10:15:13,830 - INFO - ¡Conexión exitosa!
+2025-06-19 10:15:13,858 - INFO - Versión de PostgreSQL: PostgreSQL 15.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 14.2.0) 14.2.0, 64-bit
+2025-06-19 10:15:13,918 - INFO - 
+Tablas encontradas (0):
+2025-06-19 10:15:13,918 - INFO - Conexión cerrada.
+2025-06-19 10:22:10,151 - INFO - Conectando a la base de datos...
+2025-06-19 10:22:10,178 - INFO - ¡Conexión exitosa!
+2025-06-19 10:22:10,181 - INFO - Versión de PostgreSQL: PostgreSQL 15.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 14.2.0) 14.2.0, 64-bit
+2025-06-19 10:22:10,217 - INFO - 
+Tablas encontradas (1):
+2025-06-19 10:22:10,218 - INFO - 
+Tabla: alembic_version
+2025-06-19 10:22:10,316 - INFO -   Columnas (1):
+2025-06-19 10:22:10,317 - INFO -   - version_num: character varying
+2025-06-19 10:22:10,318 - INFO - Conexión cerrada.
+2025-06-19 10:25:45,754 - INFO - Conectando a la base de datos...
+2025-06-19 10:25:45,777 - INFO - ¡Conexión exitosa!
+2025-06-19 10:25:45,782 - INFO - Versión de PostgreSQL: PostgreSQL 15.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 14.2.0) 14.2.0, 64-bit
+2025-06-19 10:25:45,811 - INFO - 
+Tablas encontradas (0):
+2025-06-19 10:25:45,813 - INFO - Conexión cerrada.

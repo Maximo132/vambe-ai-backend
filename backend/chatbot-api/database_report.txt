@@ -1,0 +1,46 @@
+================================================================================
+INFORME DE ESTRUCTURA DE LA BASE DE DATOS
+Generado el: 2025-06-19 10:50:51
+================================================================================
+
+TABLAS ENCONTRADAS (2): conversations, messages
+
+================================================================================
+TABLA: conversations
+================================================================================
+
+COLUMNAS:
+--------------------------------------------------------------------------------
+- id (INTEGER) NOT NULL DEFAULT nextval('conversations_id_seq'::regclass)
+- title (VARCHAR(255)) NOT NULL
+- status (VARCHAR(20)) NOT NULL
+- user_id (VARCHAR(255)) NOT NULL
+- metadata (JSONB)
+- created_at (TIMESTAMP) DEFAULT CURRENT_TIMESTAMP
+- updated_at (TIMESTAMP) DEFAULT CURRENT_TIMESTAMP
+
+ÍNDICES:
+--------------------------------------------------------------------------------
+- idx_conversations_user_id: user_id (NO ÚNICO)
+
+================================================================================
+TABLA: messages
+================================================================================
+
+COLUMNAS:
+--------------------------------------------------------------------------------
+- id (INTEGER) NOT NULL DEFAULT nextval('messages_id_seq'::regclass)
+- content (TEXT) NOT NULL
+- role (VARCHAR(20)) NOT NULL
+- conversation_id (INTEGER) NOT NULL
+- metadata (JSONB)
+- created_at (TIMESTAMP) DEFAULT CURRENT_TIMESTAMP
+- updated_at (TIMESTAMP) DEFAULT CURRENT_TIMESTAMP
+
+CLAVES FORÁNEAS:
+--------------------------------------------------------------------------------
+- conversation_id -> conversations(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+
+ÍNDICES:
+--------------------------------------------------------------------------------
+- idx_messages_conversation_id: conversation_id (NO ÚNICO)
