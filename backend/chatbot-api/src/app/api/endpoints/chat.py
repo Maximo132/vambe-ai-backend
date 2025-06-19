@@ -1,56 +1,65 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from fastapi.responses import StreamingResponse
-from typing import List, Optional, Dict, Any
+from fastapi import (
+    APIRouter, Depends, HTTPException, status, Query, 
+    Request, BackgroundTasks, Response
+)
+from fastapi.responses import StreamingResponse, JSONResponse
+from typing import List, Optional, Dict, Any, Union, AsyncGenerator
 from sqlalchemy.orm import Session
+from sqlalchemy import select, delete
 import json
 import uuid
+import logging
 from datetime import datetime
 
 from ....schemas.chat import (
     ChatMessage, ChatRequest, ChatResponse, ChatResponseChunk,
-    ConversationInDB, ConversationCreate, ConversationUpdate, MessageRole
+    ConversationInDB, ConversationCreate, ConversationUpdate, MessageRole,
+    MessageInDB, MessageCreate
 )
+from ....schemas.document import DocumentSearchQuery
 from ....services.chat_service import ChatService
-from ....db.session import get_db
-from ....core.security import get_current_user
+from ....services.document_service import DocumentService
+from ....services.knowledge_service import KnowledgeBaseService
+from ....db.session import get_db, get_async_db
+from ....core.security import get_current_user, get_current_user_id
 from ....core.config import settings
+from ....models.message import Message
+from ....models.conversation import Conversation
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(
-    request: ChatRequest,
+async def process_chat_message(
+    message: MessageCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Endpoint para enviar mensajes al chatbot y recibir respuestas.
+    Procesa un mensaje del usuario y devuelve la respuesta del asistente.
     
     Args:
-        request: Datos de la solicitud de chat
+        message: Datos del mensaje a procesar
+        background_tasks: Tareas en segundo plano
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
-        Respuesta del asistente con el mensaje generado
+        Respuesta del asistente
     """
     try:
-        # Verificar que el user_id del token coincida con el de la solicitud
-        if current_user["username"] != request.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No autorizado para realizar esta acción"
-            )
-            
+        # Verificar que el usuario tenga acceso a la conversación
         chat_service = ChatService(db)
-        response = await chat_service.process_chat(
-            messages=request.messages,
-            user_id=request.user_id,
-            conversation_id=request.conversation_id,
-            metadata=request.metadata,
-            stream=False,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens
+        
+        # Procesar el mensaje
+        response = await chat_service.process_message(
+            message=message.content,
+            conversation_id=str(message.conversation_id),
+            user_id=current_user_id,
+            metadata=message.metadata,
+            stream=False
         )
         
         return response
@@ -58,61 +67,53 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al procesar mensaje: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al procesar el mensaje: {str(e)}"
         )
 
 @router.post("/chat/stream")
-async def chat_stream(
-    request: ChatRequest,
+async def process_chat_stream(
+    message: MessageCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
-    Endpoint para enviar mensajes al chatbot y recibir respuestas en streaming.
+    Procesa un mensaje del usuario y devuelve la respuesta del asistente en streaming.
     
     Args:
-        request: Datos de la solicitud de chat
+        message: Datos del mensaje a procesar
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
-        StreamingResponse con la respuesta del asistente en tiempo real
+        StreamingResponse con la respuesta del asistente
     """
     try:
-        # Verificar que el user_id del token coincida con el de la solicitud
-        if current_user["username"] != request.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No autorizado para realizar esta acción"
-            )
-            
         chat_service = ChatService(db)
         
-        # Crear una función generadora para el streaming
+        # Función generadora para el streaming
         async def event_generator():
             try:
-                # Procesar el chat en modo streaming
-                response_stream = await chat_service.process_chat(
-                    messages=request.messages,
-                    user_id=request.user_id,
-                    conversation_id=request.conversation_id,
-                    metadata=request.metadata,
-                    stream=True,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens
+                # Procesar el mensaje en modo streaming
+                response_stream = await chat_service.process_message(
+                    message=message.content,
+                    conversation_id=str(message.conversation_id),
+                    user_id=current_user_id,
+                    metadata=message.metadata,
+                    stream=True
                 )
                 
-                # Enviar cada fragmento de la respuesta
+                # Enviar cada chunk de la respuesta
                 async for chunk in response_stream:
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                    yield f"data: {json.dumps(chunk.dict())}\n\n"
                 
                 # Señal de finalización
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:
-                logger.error(f"Error en el streaming del chat: {str(e)}")
+                logger.error(f"Error en el streaming del chat: {str(e)}", exc_info=True)
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
         
         return StreamingResponse(
@@ -121,25 +122,26 @@ async def chat_stream(
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"  # Importante para Nginx
+                "X-Accel-Buffering": "no"
             }
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al iniciar el streaming del chat: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al iniciar el streaming del chat: {str(e)}"
         )
 
-@router.get("/conversations/{conversation_id}/messages", response_model=List[ChatMessage])
+@router.get("/conversations/{conversation_id}/messages", response_model=List[MessageInDB])
 async def get_conversation_messages(
     conversation_id: str,
     skip: int = Query(0, ge=0, description="Número de mensajes a saltar"),
     limit: int = Query(100, le=1000, description="Número máximo de mensajes a devolver"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Obtiene los mensajes de una conversación específica con paginación.
@@ -149,25 +151,31 @@ async def get_conversation_messages(
         skip: Número de mensajes a saltar
         limit: Número máximo de mensajes a devolver
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
         Lista de mensajes de la conversación
     """
     try:
         chat_service = ChatService(db)
-        messages = await chat_service.get_conversation_messages(
+        messages = await chat_service._get_conversation_history(
             conversation_id=conversation_id,
-            user_id=current_user["username"],
-            skip=skip,
-            limit=limit
+            limit=limit,
+            before=datetime.utcnow() if skip == 0 else None
         )
+        
+        # Aplicar paginación
+        if skip > 0 and skip < len(messages):
+            messages = messages[skip:skip+limit]
+        elif skip >= len(messages):
+            messages = []
         
         return messages
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al obtener mensajes de la conversación {conversation_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener los mensajes: {str(e)}"
@@ -178,7 +186,7 @@ async def list_conversations(
     skip: int = Query(0, ge=0, description="Número de conversaciones a saltar"),
     limit: int = Query(20, le=100, description="Número máximo de conversaciones a devolver"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Obtiene la lista de conversaciones del usuario autenticado con paginación.
@@ -187,32 +195,53 @@ async def list_conversations(
         skip: Número de conversaciones a saltar
         limit: Número máximo de conversaciones a devolver
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
         Lista de conversaciones del usuario
     """
     try:
-        chat_service = ChatService(db)
-        conversations = await chat_service.list_conversations(
-            user_id=current_user["username"],
-            skip=skip,
-            limit=limit
+        # Obtener las conversaciones del usuario
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.user_id == current_user_id)
+            .order_by(Conversation.updated_at.desc())
+            .offset(skip)
+            .limit(limit)
         )
+        conversations = result.scalars().all()
+        
+        # Obtener el último mensaje de cada conversación
+        for conv in conversations:
+            last_message = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conv.id)
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            last_message = last_message.scalars().first()
+            
+            if last_message:
+                # Usar el patrón de asignación de atributos dinámicos
+                setattr(conv, "last_message", last_message.content[:100])  # Primeros 100 caracteres
+                setattr(conv, "last_message_at", last_message.created_at)
         
         return conversations
         
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error al listar conversaciones para el usuario {current_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al listar las conversaciones: {str(e)}"
+            detail=f"Error al obtener las conversaciones: {str(e)}"
         )
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationInDB)
 async def get_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Obtiene los detalles de una conversación específica.
@@ -220,29 +249,46 @@ async def get_conversation(
     Args:
         conversation_id: ID de la conversación
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
         Detalles de la conversación
     """
     try:
-        chat_service = ChatService(db)
-        conversation = await chat_service.get_conversation(
-            conversation_id=conversation_id,
-            user_id=current_user["username"]
+        # Obtener la conversación
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .where(Conversation.user_id == current_user_id)
         )
+        conversation = result.scalar_one_or_none()
         
         if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversación no encontrada o no autorizada"
+                detail="Conversación no encontrada o no tienes permiso para acceder a ella"
             )
+            
+        # Obtener el último mensaje
+        last_message = await db.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        last_message = last_message.scalars().first()
         
+        if last_message:
+            # Usar el patrón de asignación de atributos dinámicos
+            setattr(conversation, "last_message", last_message.content[:100])  # Primeros 100 caracteres
+            setattr(conversation, "last_message_at", last_message.created_at)
+            
         return conversation
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al obtener la conversación {conversation_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener la conversación: {str(e)}"
@@ -252,7 +298,7 @@ async def get_conversation(
 async def create_conversation(
     conversation: ConversationCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Crea una nueva conversación.
@@ -260,30 +306,28 @@ async def create_conversation(
     Args:
         conversation: Datos para crear la conversación
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
         Conversación creada
     """
     try:
-        # Verificar que el user_id coincida con el usuario autenticado
-        if current_user["username"] != conversation.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No autorizado para crear una conversación para otro usuario"
-            )
-        
-        chat_service = ChatService(db)
-        new_conversation = await chat_service.create_conversation(
-            conversation_data=conversation,
-            user_id=current_user["username"]
+        # Crear la conversación
+        db_conversation = Conversation(
+            id=str(uuid.uuid4()),
+            user_id=current_user_id,
+            title=conversation.title or "Nueva conversación",
+            metadata=conversation.metadata or {}
         )
         
-        return new_conversation
+        db.add(db_conversation)
+        await db.commit()
+        await db.refresh(db_conversation)
         
-    except HTTPException:
-        raise
+        return db_conversation
+        
     except Exception as e:
+        logger.error(f"Error al crear conversación para el usuario {current_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la conversación: {str(e)}"
@@ -294,7 +338,7 @@ async def update_conversation(
     conversation_id: str,
     conversation_update: ConversationUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Actualiza una conversación existente.
@@ -303,30 +347,42 @@ async def update_conversation(
         conversation_id: ID de la conversación a actualizar
         conversation_update: Datos a actualizar
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
         
     Returns:
         Conversación actualizada
     """
     try:
-        chat_service = ChatService(db)
-        updated_conversation = await chat_service.update_conversation(
-            conversation_id=conversation_id,
-            conversation_data=conversation_update,
-            user_id=current_user["username"]
+        # Obtener la conversación existente
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .where(Conversation.user_id == current_user_id)
         )
+        db_conversation = result.scalar_one_or_none()
         
-        if not updated_conversation:
+        if not db_conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversación no encontrada o no autorizada"
+                detail="Conversación no encontrada o no tienes permiso para modificarla"
             )
         
-        return updated_conversation
+        # Actualizar los campos
+        update_data = conversation_update.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(db_conversation, field, value)
+        
+        db_conversation.updated_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(db_conversation)
+        
+        return db_conversation
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al actualizar la conversación {conversation_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al actualizar la conversación: {str(e)}"
@@ -336,7 +392,7 @@ async def update_conversation(
 async def delete_conversation(
     conversation_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """
     Elimina una conversación y todos sus mensajes.
@@ -344,27 +400,40 @@ async def delete_conversation(
     Args:
         conversation_id: ID de la conversación a eliminar
         db: Sesión de base de datos
-        current_user: Usuario autenticado
+        current_user_id: ID del usuario autenticado
     """
     try:
-        chat_service = ChatService(db)
-        deleted = await chat_service.delete_conversation(
-            conversation_id=conversation_id,
-            user_id=current_user["username"]
+        # Verificar que la conversación exista y pertenezca al usuario
+        result = await db.execute(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .where(Conversation.user_id == current_user_id)
         )
+        conversation = result.scalar_one_or_none()
         
-        if not deleted:
+        if not conversation:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversación no encontrada o no autorizada"
+                detail="Conversación no encontrada o no tienes permiso para eliminarla"
             )
-            
+        
+        # Eliminar los mensajes de la conversación
+        await db.execute(
+            delete(Message)
+            .where(Message.conversation_id == conversation_id)
+        )
+        
+        # Eliminar la conversación
+        await db.delete(conversation)
+        await db.commit()
+        
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error al eliminar la conversación {conversation_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar la conversación: {str(e)}"
         )
-    
-    return None
