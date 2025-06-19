@@ -6,6 +6,7 @@ API de backend para el sistema de chatbot conversacional de Vambe.ai, construido
 
 - **Autenticación JWT** con soporte para múltiples roles de usuario
 - **Integración con OpenAI** para generación de respuestas conversacionales
+- **Soporte para bases de datos asíncronas** con SQLAlchemy 2.0
 - **Almacenamiento vectorial** con Weaviate para búsqueda semántica
 - **Sistema de caché distribuido** con Redis para mejorar el rendimiento
 - **Análisis de sentimientos** en tiempo real de las conversaciones
@@ -15,8 +16,12 @@ API de backend para el sistema de chatbot conversacional de Vambe.ai, construido
 - Documentación automática con Swagger UI y ReDoc
 - Soporte para WebSockets para chat en tiempo real
 - Tareas en segundo plano con Celery
-- Validación de datos con Pydantic
+- Validación de datos con Pydantic v2
 - Variables de entorno para configuración
+- Migraciones de base de datos con Alembic
+- Soporte para operaciones asíncronas en toda la aplicación
+- Inicialización automática de la base de datos
+- Datos iniciales configurables
 
 ## Requisitos Previos
 
@@ -89,9 +94,71 @@ chatbot-api/
 └── README.md             # Este archivo
 ```
 
-## Variables de Entorno
+## Configuración de Base de Datos Asíncrona
+
+El proyecto utiliza SQLAlchemy 2.0 con soporte para operaciones asíncronas. La configuración incluye:
+
+### Variables de Entorno para Base de Datos
 
 Copia el archivo `.env.example` a `.env` y configura las siguientes variables:
+
+```
+# Configuración de base de datos síncrona (para migraciones y tareas síncronas)
+DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/chatbot_db
+
+# Configuración de base de datos asíncrona (para operaciones asíncronas)
+ASYNC_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/chatbot_db
+
+# Configuración para pruebas
+TEST_DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/chatbot_test_db
+TEST_ASYNC_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/chatbot_test_db
+```
+
+### Uso de Sesiones Asíncronas
+
+Para utilizar sesiones asíncronas en tus rutas FastAPI:
+
+```python
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_async_db
+
+@app.get("/items/")
+async def read_items(
+    db: AsyncSession = Depends(get_async_db)
+):
+    # Usa la sesión asíncrona
+    result = await db.execute(select(MyModel))
+    items = result.scalars().all()
+    return items
+```
+
+### Migraciones con Alembic
+
+El proyecto incluye configuración para migraciones con Alembic. Para crear una nueva migración:
+
+```bash
+alembic revision --autogenerate -m "Descripción de los cambios"
+```
+
+Para aplicar las migraciones:
+
+```bash
+alembic upgrade head
+```
+
+### Inicialización de la Base de Datos
+
+Para inicializar la base de datos con datos iniciales:
+
+```bash
+python -m scripts.init_db
+```
+
+## Variables de Entorno Adicionales
+
+Además de las variables de base de datos, configura las siguientes variables:
 
 - `DATABASE_URL`: URL de conexión a PostgreSQL
 - `JWT_SECRET`: Clave secreta para firmar los tokens JWT

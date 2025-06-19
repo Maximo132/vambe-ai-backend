@@ -1,34 +1,38 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, func
-from sqlalchemy.ext.declarative import declared_attr
+from typing import Any, Dict
+from sqlalchemy import Column, DateTime, Integer
+from sqlalchemy.ext.declarative import as_declarative, declared_attr
+from sqlalchemy.orm import declarative_base
 
-from ..db.base_class import Base as BaseModel
+# Crear una base declarativa que se usará para todos los modelos
+Base = declarative_base()
 
-class Base(BaseModel):
+class BaseModel:
     """
     Clase base para todos los modelos con campos comunes.
-    Hereda de Base que ya incluye id y métodos comunes.
     """
     __abstract__ = True
     
+    id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         """
         Convierte el modelo a un diccionario.
         
         Returns:
-            dict: Diccionario con los atributos del modelo
+            Dict[str, Any]: Diccionario con los atributos del modelo
         """
-        result = super().to_dict()
-        # Convertir campos datetime a string ISO format
-        for key, value in result.items():
+        result = {}
+        for column in self.__table__.columns:
+            value = getattr(self, column.name)
             if isinstance(value, datetime):
-                result[key] = value.isoformat()
+                value = value.isoformat()
+            result[column.name] = value
         return result
     
-    def update(self, **kwargs):
+    def update(self, **kwargs) -> None:
         """
         Actualiza los atributos del modelo con los valores proporcionados.
         
@@ -39,3 +43,7 @@ class Base(BaseModel):
             if hasattr(self, key) and value is not None:
                 setattr(self, key, value)
         return self
+
+# Clase base que combina SQLAlchemy Base con nuestra funcionalidad personalizada
+class Base(Base, BaseModel):
+    __abstract__ = True

@@ -101,7 +101,8 @@ async def run_migrations_online() -> None:
     and associate a connection with the context.
     """
     # Para operaciones normales (síncronas)
-    connectable = Engine(
+    from sqlalchemy import create_engine
+    connectable = create_engine(
         settings.DATABASE_URL,
         pool_pre_ping=True,
         pool_recycle=3600,
