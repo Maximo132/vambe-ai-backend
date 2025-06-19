@@ -1,20 +1,25 @@
+"""
+Punto de entrada principal de la aplicación FastAPI.
+
+Este módulo configura e inicia la aplicación FastAPI, incluyendo la configuración
+CORS, middleware, rutas y eventos de inicio/cierre.
+"""
+import asyncio
+import logging
+from typing import List, Optional
+
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import JSONResponse
+from fastapi_limiter import FastAPILimiter
 from sqlalchemy.orm import Session
-from typing import List, Optional
-import uvicorn
-import logging
-import json
 
 from .core.config import settings
-from .db.session import SessionLocal, engine
+from .db import init_db, get_async_db, get_db, async_engine, engine
 from .api.endpoints import chat, conversations, messages, auth, documents, analysis
 from .models import user as user_models
 from .models import chat as chat_models, document as document_models
 from .services.cache_service import cache_service
-from fastapi_limiter import FastAPILimiter
-from fastapi.responses import JSONResponse
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +39,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Middleware para manejar excepciones de rate limiting
@@ -53,24 +59,60 @@ async def rate_limit_middleware(request: Request, call_next):
 # Eventos de inicio y apagado
 @app.on_event("startup")
 async def startup_event():
-    """Evento de inicio de la aplicación"""
-    # Inicializar el servicio de caché
-    await cache_service.connect()
+    """
+    Evento de inicio de la aplicación.
     
-    # Configurar rate limiting
-    await FastAPILimiter.init(
-        cache_service.redis,
-        prefix="rate_limiter",
-        retry_after="x-ratelimit-retry-after"
-    )
-    logger.info("Aplicación iniciada y servicios configurados")
+    Se ejecuta al iniciar la aplicación y configura todos los servicios necesarios.
+    """
+    logger.info("Iniciando aplicación...")
+    
+    try:
+        # Inicializar la base de datos
+        logger.info("Inicializando base de datos...")
+        await init_db()
+        
+        # Inicializar el servicio de caché
+        logger.info("Inicializando servicio de caché...")
+        await cache_service.connect()
+        
+        # Configurar rate limiting
+        logger.info("Configurando rate limiting...")
+        await FastAPILimiter.init(
+            cache_service.redis,
+            prefix="rate_limiter",
+            retry_after="x-ratelimit-retry-after"
+        )
+        
+        logger.info("Aplicación iniciada y servicios configurados correctamente")
+    except Exception as e:
+        logger.error(f"Error al iniciar la aplicación: {e}")
+        raise
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Evento de apagado de la aplicación"""
-    # Cerrar conexiones
-    await cache_service.close()
-    logger.info("Aplicación detenida y recursos liberados")
+    """
+    Evento de apagado de la aplicación.
+    
+    Se ejecuta al detener la aplicación y libera todos los recursos utilizados.
+    """
+    logger.info("Deteniendo aplicación...")
+    
+    try:
+        # Cerrar conexiones de caché
+        if cache_service.is_connected:
+            await cache_service.close()
+        
+        # Cerrar conexiones de base de datos
+        if engine:
+            engine.dispose()
+        
+        if async_engine:
+            await async_engine.dispose()
+        
+        logger.info("Aplicación detenida y recursos liberados correctamente")
+    except Exception as e:
+        logger.error(f"Error al detener la aplicación: {e}")
+        raise
 
 # Incluir routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
@@ -111,10 +153,27 @@ async def http_exception_handler(request, exc):
 # Inicialización de la aplicación
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
+    
+    # Configuración de uvicorn
+    config = uvicorn.Config(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        workers=4
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+        workers=settings.WORKERS,
+        log_level=settings.LOG_LEVEL.lower(),
+        proxy_headers=True,
+        forwarded_allow_ips="*"
     )
+    
+    # Iniciar el servidor
+    server = uvicorn.Server(config)
+    
+    try:
+        logger.info(f"Iniciando servidor en {settings.HOST}:{settings.PORT}")
+        server.run()
+    except Exception as e:
+        logger.error(f"Error al iniciar el servidor: {e}")
+        raise
+    finally:
+        logger.info("Servidor detenido")
