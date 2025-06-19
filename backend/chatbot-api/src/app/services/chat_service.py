@@ -1,29 +1,92 @@
-from typing import List, Dict, Any, Optional, Union, AsyncGenerator
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
+from typing import List, Dict, Any, Optional, Union, AsyncGenerator, Tuple
+from datetime import datetime, timezone, timedelta
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import and_, or_, select, func, text
 import logging
 import json
 import uuid
+import re
+from pathlib import Path
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 
-from ..models.chat import Conversation, Message, MessageRole, Document as DocumentModel
-from ..models.user import User
-from ..schemas.chat import (
-    ChatMessage, ChatResponse, ConversationInDB, MessageInDB, Document,
-    ConversationCreate, ConversationUpdate
+from app.models.chat import Conversation, Message, MessageRole, Document as DocumentModel
+from app.models.user import User
+from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
+from app.schemas.chat import (
+    ChatMessage, ChatResponse, ChatResponseChunk, ConversationInDB, 
+    MessageInDB, Document as DocumentSchema, ConversationCreate, 
+    ConversationUpdate, FunctionCall, FunctionCallResponse
 )
-from .openai_service import openai_service
-from .weaviate_service import weaviate_service
-from ..core.config import settings
-from ..core.security import get_password_hash
-from ..db.session import get_db
-from .cache_service import cache_service
-import hashlib
+from app.schemas.document import DocumentSearchQuery, DocumentSearchResults
+from app.schemas.knowledge_base import KnowledgeBaseWithDocuments, KnowledgeBaseSearchQuery
+from app.services.openai_service import openai_service
+from app.services.weaviate_service import weaviate_service
+from app.services.document_service import DocumentService
+from app.services.knowledge_service import KnowledgeBaseService
+from app.core.config import settings
+from app.core.security import get_password_hash
+from app.db.session import get_db
+from app.utils.cache import cache_service
+from app.utils.file_utils import save_upload_file, generate_unique_filename, get_file_extension
 
 # Configurar logging
 logger = logging.getLogger(__name__)
+
+# Constantes
+MAX_TOKENS = 4000  # Máximo de tokens para el contexto
+MAX_HISTORY = 10   # Máximo de mensajes de historial a incluir
+DOCUMENT_CONTEXT_TOKENS = 1000  # Tokens máximos para el contexto de documentos
+
+# Funciones disponibles para el modelo de chat
+AVAILABLE_FUNCTIONS = {
+    "search_documents": {
+        "name": "search_documents",
+        "description": "Busca en los documentos del usuario información relevante a una consulta",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Consulta de búsqueda"
+                },
+                "knowledge_base_id": {
+                    "type": "string",
+                    "description": "ID de la base de conocimiento (opcional)"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Número máximo de resultados (por defecto: 3)",
+                    "default": 3
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    "search_knowledge_base": {
+        "name": "search_knowledge_base",
+        "description": "Busca en una base de conocimiento específica",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "knowledge_base_id": {
+                    "type": "string",
+                    "description": "ID de la base de conocimiento"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Consulta de búsqueda"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Número máximo de resultados (por defecto: 3)",
+                    "default": 3
+                }
+            },
+            "required": ["knowledge_base_id", "query"]
+        }
+    }
+}
 
 class ChatService:
     """
@@ -33,10 +96,22 @@ class ChatService:
     
     def __init__(self, db: Session):
         self.db = db
+        self.document_service = DocumentService(db)
+        self.knowledge_service = KnowledgeBaseService(db)
         self.default_system_prompt = """
-        Eres un asistente de IA útil, amable y profesional llamado Vambe AI. 
-        Responde a las preguntas de manera clara y concisa. 
-        Si no estás seguro de algo, es mejor decirlo que inventar información.
+        Eres Vambe AI, un asistente de IA profesional y útil. 
+        
+        Instrucciones clave:
+        1. Responde de manera clara, concisa y profesional.
+        2. Utiliza el contexto proporcionado para dar respuestas precisas.
+        3. Si no estás seguro de algo, dilo claramente en lugar de inventar información.
+        4. Cuando cites documentos o fuentes, menciónalos claramente.
+        5. Mantén un tono amable y profesional en todo momento.
+        6. Si la pregunta es ambigua, pide aclaraciones.
+        7. Para preguntas complejas, desglosa la respuesta en pasos lógicos.
+        8. Si te piden realizar una acción que no puedes completar, explícalo claramente.
+        
+        Recuerda: La precisión y la honestidad son más importantes que dar una respuesta inmediata.
         """
     
     async def _get_user_system_prompt(self, user_id: str) -> str:
@@ -50,12 +125,518 @@ class ChatService:
             str: Prompt del sistema personalizado o el predeterminado
         """
         try:
-            # Aquí podrías obtener un prompt personalizado para el usuario desde la base de datos
-            # Por ahora, devolvemos el prompt por defecto
-            return self.default_system_prompt
+            # Intentar obtener el prompt personalizado del usuario desde la caché
+            cache_key = f"user:{user_id}:system_prompt"
+            cached_prompt = await cache_service.get(cache_key)
+            if cached_prompt:
+                return cached_prompt
+                
+            # Si no está en caché, obtenerlo de la base de datos
+            # (implementación futura: obtener de la tabla de configuración del usuario)
+            user_prompt = self.default_system_prompt
+            
+            # Almacenar en caché por 1 hora
+            await cache_service.set(cache_key, user_prompt, expire=3600)
+            
+            return user_prompt
+            
         except Exception as e:
             logger.error(f"Error al obtener el prompt del sistema para el usuario {user_id}: {str(e)}")
             return self.default_system_prompt
+            
+    async def _search_documents(
+        self, 
+        query: str, 
+        user_id: int,
+        knowledge_base_id: Optional[str] = None,
+        limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca en los documentos del usuario información relevante a una consulta.
+        
+        Args:
+            query: Consulta de búsqueda
+            user_id: ID del usuario
+            knowledge_base_id: ID opcional de la base de conocimiento
+            limit: Número máximo de resultados
+            
+        Returns:
+            Lista de resultados de búsqueda con metadatos
+        """
+        try:
+            search_query = DocumentSearchQuery(
+                query=query,
+                knowledge_base_id=knowledge_base_id,
+                limit=limit,
+                min_score=0.7
+            )
+            
+            results = await self.document_service.search_documents(
+                query=query,
+                user_id=user_id,
+                search_params=search_query
+            )
+            
+            return [
+                {
+                    "document_id": str(result.document.id),
+                    "title": result.document.title,
+                    "content": result.chunk_text,
+                    "score": result.score,
+                    "metadata": result.chunk_metadata or {}
+                }
+                for result in results.results
+            ]
+            
+        except Exception as e:
+            logger.error(f"Error al buscar documentos: {str(e)}")
+            return []
+    
+    async def _search_knowledge_base(
+        self,
+        knowledge_base_id: str,
+        query: str,
+        user_id: int,
+        limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca en una base de conocimiento específica.
+        
+        Args:
+            knowledge_base_id: ID de la base de conocimiento
+            query: Consulta de búsqueda
+            user_id: ID del usuario
+            limit: Número máximo de resultados
+            
+        Returns:
+            Lista de resultados de búsqueda con metadatos
+        """
+        try:
+            # Verificar que el usuario tenga acceso a la base de conocimiento
+            kb = await self.knowledge_service.get(knowledge_base_id, user_id=user_id)
+            if not kb:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes acceso a esta base de conocimiento"
+                )
+            
+            # Realizar la búsqueda
+            search_results = await self.knowledge_service.search(
+                query=query,
+                knowledge_base_id=knowledge_base_id,
+                user_id=user_id,
+                limit=limit
+            )
+            
+            # Formatear resultados
+            formatted_results = []
+            for result in search_results:
+                doc = result.get("document", {})
+                formatted_results.append({
+                    "document_id": str(doc.get("id")),
+                    "title": doc.get("title", "Documento sin título"),
+                    "content": result.get("chunk_text", ""),
+                    "score": result.get("score", 0.0),
+                    "metadata": result.get("chunk_metadata", {})
+                })
+            
+            return formatted_results
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error al buscar en la base de conocimiento {knowledge_base_id}: {str(e)}")
+            return []
+    
+    async def _call_function(
+        self, 
+        function_name: str, 
+        arguments: Dict[str, Any],
+        user_id: int
+    ) -> Dict[str, Any]:
+        """
+        Ejecuta una función específica con los argumentos proporcionados.
+        
+        Args:
+            function_name: Nombre de la función a ejecutar
+            arguments: Argumentos para la función
+            user_id: ID del usuario que realiza la solicitud
+            
+        Returns:
+            Resultado de la función
+        """
+        try:
+            logger.info(f"Llamando a función: {function_name} con argumentos: {arguments}")
+            
+            if function_name == "search_documents":
+                results = await self._search_documents(
+                    query=arguments.get("query"),
+                    user_id=user_id,
+                    knowledge_base_id=arguments.get("knowledge_base_id"),
+                    limit=min(int(arguments.get("limit", 3)), 5)  # Máximo 5 resultados
+                )
+                return {"results": results}
+                
+            elif function_name == "search_knowledge_base":
+                if not arguments.get("knowledge_base_id"):
+                    return {"error": "Se requiere el ID de la base de conocimiento"}
+                    
+                results = await self._search_knowledge_base(
+                    knowledge_base_id=arguments["knowledge_base_id"],
+                    query=arguments["query"],
+                    user_id=user_id,
+                    limit=min(int(arguments.get("limit", 3)), 5)  # Máximo 5 resultados
+                )
+                return {"results": results}
+                
+            else:
+                return {"error": f"Función no implementada: {function_name}"}
+                
+        except Exception as e:
+            logger.error(f"Error al ejecutar la función {function_name}: {str(e)}")
+            return {"error": f"Error al ejecutar la función: {str(e)}"}
+    
+    async def process_message(
+        self,
+        message: str,
+        conversation_id: str,
+        user_id: int,
+        metadata: Optional[Dict[str, Any]] = None,
+        stream: bool = False
+    ) -> Union[ChatResponse, AsyncGenerator[ChatResponseChunk, None]]:
+        """
+        Procesa un mensaje del usuario y genera una respuesta, opcionalmente en streaming.
+        
+        Args:
+            message: Mensaje del usuario
+            conversation_id: ID de la conversación
+            user_id: ID del usuario
+            metadata: Metadatos adicionales
+            stream: Si es True, devuelve un generador para streaming
+            
+        Returns:
+            ChatResponse o generador de ChatResponseChunk
+        """
+        try:
+            # Verificar que la conversación exista y pertenezca al usuario
+            conversation = await self.get_conversation(conversation_id, str(user_id))
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversación no encontrada"
+                )
+            
+            # Obtener el historial de mensajes recientes
+            messages = await self._get_conversation_history(conversation_id, limit=MAX_HISTORY)
+            
+            # Preparar el mensaje del usuario
+            user_message = Message(
+                id=str(uuid.uuid4()),
+                conversation_id=conversation_id,
+                role=MessageRole.USER,
+                content=message,
+                created_at=datetime.utcnow(),
+                metadata=metadata or {}
+            )
+            
+            # Guardar el mensaje del usuario
+            self.db.add(user_message)
+            await self.db.commit()
+            
+            # Preparar el mensaje para el modelo
+            system_prompt = await self._get_user_system_prompt(str(user_id))
+            
+            # Construir el historial de mensajes para el modelo
+            messages_for_model = [
+                {"role": "system", "content": system_prompt},
+                *[
+                    {
+                        "role": msg.role.value,
+                        "content": msg.content,
+                        "name": str(msg.user_id) if msg.role == MessageRole.USER else None
+                    }
+                    for msg in messages
+                    if msg.role in [MessageRole.USER, MessageRole.ASSISTANT]
+                ],
+                {"role": "user", "content": message, "name": str(user_id)}
+            ]
+            
+            # Función para manejar la respuesta del modelo
+            async def generate_response():
+                # Primera pasada: determinar si necesitamos buscar información
+                response = await openai_service.chat_completion(
+                    messages=messages_for_model,
+                    functions=[AVAILABLE_FUNCTIONS[fn] for fn in AVAILABLE_FUNCTIONS],
+                    function_call="auto",
+                    stream=stream
+                )
+                
+                # Si es streaming, manejar la respuesta como generador
+                if stream:
+                    async for chunk in self._handle_streaming_response(
+                        response,
+                        conversation_id,
+                        user_id,
+                        metadata
+                    ):
+                        yield chunk
+                    return
+                
+                # Si no es streaming, manejar la respuesta normal
+                return await self._handle_direct_response(
+                    response,
+                    conversation_id,
+                    user_id,
+                    metadata,
+                    messages_for_model
+                )
+            
+            return await generate_response()
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error al procesar mensaje: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al procesar el mensaje"
+            )
+    
+    async def _handle_direct_response(
+        self,
+        response: Dict[str, Any],
+        conversation_id: str,
+        user_id: int,
+        metadata: Optional[Dict[str, Any]],
+        messages_for_model: List[Dict[str, Any]]
+    ) -> ChatResponse:
+        """
+        Maneja una respuesta directa (no streaming) del modelo.
+        """
+        function_call = response.get("function_call")
+        
+        # Si el modelo quiere llamar a una función
+        if function_call:
+            function_name = function_call.get("name")
+            function_args = json.loads(function_call.get("arguments", "{}"))
+            
+            # Llamar a la función
+            function_response = await self._call_function(
+                function_name=function_name,
+                arguments=function_args,
+                user_id=user_id
+            )
+            
+            # Agregar la respuesta de la función al historial
+            messages_for_model.append({
+                "role": "assistant",
+                "content": None,
+                "function_call": function_call
+            })
+            
+            messages_for_model.append({
+                "role": "function",
+                "name": function_name,
+                "content": json.dumps(function_response)
+            })
+            
+            # Obtener la respuesta final del modelo
+            final_response = await openai_service.chat_completion(
+                messages=messages_for_model,
+                functions=[AVAILABLE_FUNCTIONS[fn] for fn in AVAILABLE_FUNCTIONS],
+                function_call="none"  # No permitir más llamadas a funciones
+            )
+            
+            content = final_response.get("content", "")
+        else:
+            content = response.get("content", "")
+        
+        # Crear y guardar el mensaje de asistente
+        assistant_message = Message(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=content,
+            created_at=datetime.utcnow(),
+            metadata={
+                "model": response.get("model", "gpt-4"),
+                "usage": response.get("usage", {}),
+                **(metadata or {})
+            }
+        )
+        
+        self.db.add(assistant_message)
+        await self.db.commit()
+        
+        return ChatResponse(
+            message=MessageInDB.from_orm(assistant_message),
+            conversation_id=conversation_id
+        )
+    
+    async def _handle_streaming_response(
+        self,
+        response_stream: AsyncGenerator[Dict[str, Any], None],
+        conversation_id: str,
+        user_id: int,
+        metadata: Optional[Dict[str, Any]]
+    ) -> AsyncGenerator[ChatResponseChunk, None]:
+        """
+        Maneja una respuesta en streaming del modelo.
+        """
+        message_id = str(uuid.uuid4())
+        full_content = ""
+        function_call = None
+        
+        # Buffer para acumular el contenido de la función
+        function_buffer = ""
+        in_function_call = False
+        
+        # Procesar cada chunk de la respuesta
+        async for chunk in response_stream:
+            delta = chunk.get("delta", {})
+            
+            # Manejar llamadas a funciones
+            if "function_call" in delta:
+                in_function_call = True
+                if function_call is None:
+                    function_call = {"name": "", "arguments": ""}
+                
+                # Actualizar el nombre de la función si está presente
+                if "name" in delta["function_call"]:
+                    function_call["name"] += delta["function_call"]["name"]
+                
+                # Actualizar los argumentos de la función si están presentes
+                if "arguments" in delta["function_call"]:
+                    function_buffer += delta["function_call"]["arguments"]
+                    function_call["arguments"] = function_buffer
+                
+                # No enviar nada al cliente todavía
+                continue
+            
+            # Si estábamos en una llamada a función pero ahora no, procesar la función
+            if in_function_call and not delta.get("function_call"):
+                in_function_call = False
+                
+                # Llamar a la función
+                function_name = function_call.get("name")
+                function_args = json.loads(function_call.get("arguments", "{}"))
+                
+                function_response = await self._call_function(
+                    function_name=function_name,
+                    arguments=function_args,
+                    user_id=user_id
+                )
+                
+                # Obtener la respuesta final del modelo con la función
+                messages = [
+                    {"role": "system", "content": await self._get_user_system_prompt(str(user_id))},
+                    {"role": "user", "content": full_content},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "function_call": function_call
+                    },
+                    {
+                        "role": "function",
+                        "name": function_name,
+                        "content": json.dumps(function_response)
+                    }
+                ]
+                
+                # Obtener la respuesta final del modelo
+                final_response = await openai_service.chat_completion(
+                    messages=messages,
+                    functions=[AVAILABLE_FUNCTIONS[fn] for fn in AVAILABLE_FUNCTIONS],
+                    function_call="none",  # No permitir más llamadas a funciones
+                    stream=True
+                )
+                
+                # Procesar la respuesta final en streaming
+                async for final_chunk in final_response:
+                    delta = final_chunk.get("delta", {})
+                    if "content" in delta:
+                        content = delta["content"] or ""
+                        full_content += content
+                        
+                        yield ChatResponseChunk(
+                            id=message_id,
+                            content=content,
+                            conversation_id=conversation_id,
+                            done=False
+                        )
+                
+                # Salir del bucle principal
+                break
+            
+            # Si no es una llamada a función, manejar el contenido normal
+            if "content" in delta:
+                content = delta["content"] or ""
+                full_content += content
+                
+                yield ChatResponseChunk(
+                    id=message_id,
+                    content=content,
+                    conversation_id=conversation_id,
+                    done=False
+                )
+        
+        # Si no hubo llamadas a funciones, guardar el mensaje
+        if not function_call:
+            assistant_message = Message(
+                id=message_id,
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=full_content,
+                created_at=datetime.utcnow(),
+                metadata={
+                    "model": "gpt-4",
+                    **(metadata or {})
+                }
+            )
+            
+            self.db.add(assistant_message)
+            await self.db.commit()
+        
+        # Enviar señal de finalización
+        yield ChatResponseChunk(
+            id=message_id,
+            content="",
+            conversation_id=conversation_id,
+            done=True
+        )
+    
+    async def _get_conversation_history(
+        self,
+        conversation_id: str,
+        limit: int = 10,
+        before: Optional[datetime] = None
+    ) -> List[Message]:
+        """
+        Obtiene el historial de mensajes de una conversación.
+        
+        Args:
+            conversation_id: ID de la conversación
+            limit: Número máximo de mensajes a devolver
+            before: Fecha límite para los mensajes
+            
+        Returns:
+            Lista de mensajes ordenados por fecha de creación (más antiguos primero)
+        """
+        query = select(Message).where(
+            Message.conversation_id == conversation_id
+        ).order_by(Message.created_at.desc())
+        
+        if before:
+            query = query.where(Message.created_at < before)
+        
+        if limit > 0:
+            query = query.limit(limit)
+        
+        result = await self.db.execute(query)
+        messages = result.scalars().all()
+        
+        # Invertir el orden para devolver los más antiguos primero
+        return list(reversed(messages))
     
     # Métodos para manejar conversaciones
     
