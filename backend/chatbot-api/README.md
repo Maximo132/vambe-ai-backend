@@ -1,12 +1,15 @@
 # Vambe.ai Chatbot API
 
-API de backend para el sistema de chatbot conversacional de Vambe.ai, construido con FastAPI, PostgreSQL, Weaviate y OpenAI.
+API de backend para el sistema de chatbot conversacional de Vambe.ai, construido con FastAPI, PostgreSQL, Weaviate y OpenAI. Este proyecto implementa un sistema de chat con IA que incluye análisis de sentimientos, caché distribuido y gestión de conversaciones.
 
 ## Características Principales
 
-- Autenticación JWT con soporte para múltiples roles de usuario
-- Integración con OpenAI para generación de respuestas conversacionales
-- Almacenamiento vectorial con Weaviate para búsqueda semántica
+- **Autenticación JWT** con soporte para múltiples roles de usuario
+- **Integración con OpenAI** para generación de respuestas conversacionales
+- **Almacenamiento vectorial** con Weaviate para búsqueda semántica
+- **Sistema de caché distribuido** con Redis para mejorar el rendimiento
+- **Análisis de sentimientos** en tiempo real de las conversaciones
+- **Rate limiting** para prevenir abusos de la API
 - Almacenamiento de documentos con MinIO/S3
 - Sistema de logging estructurado y configurable
 - Documentación automática con Swagger UI y ReDoc
@@ -19,9 +22,10 @@ API de backend para el sistema de chatbot conversacional de Vambe.ai, construido
 
 - Python 3.9+
 - PostgreSQL 13+
-- Redis 6+
+- Redis 6+ (requerido para caché y rate limiting)
 - MinIO o S3 para almacenamiento de archivos
-- Weaviate para búsqueda vectorial (opcional)
+- Weaviate para búsqueda vectorial (recomendado)
+- Docker y Docker Compose (para desarrollo local)
 
 ## Configuración del Entorno
 

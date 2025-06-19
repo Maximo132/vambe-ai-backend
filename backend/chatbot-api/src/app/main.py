@@ -1,58 +1,31 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import uvicorn
 import logging
+import json
 
 from .core.config import settings
 from .db.session import SessionLocal, engine
-from .api.endpoints import chat, conversations, messages, auth, documents
+from .api.endpoints import chat, conversations, messages, auth, documents, analysis
 from .models import user as user_models
 from .models import chat as chat_models, document as document_models
+from .services.cache_service import cache_service
+from fastapi_limiter import FastAPILimiter
+from fastapi.responses import JSONResponse
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+import uvicorn
+from .core.app_startup import create_app
+from .core.config import settings
+from .api.endpoints import chat, conversations, messages, auth, documents, analysis
 
-def create_tables():
-    """Crea las tablas en la base de datos"""
-    logger.info("Creando tablas en la base de datos...")
-    user_models.Base.metadata.create_all(bind=engine)
-    chat_models.Base.metadata.create_all(bind=engine)
-    document_models.Base.metadata.create_all(bind=engine)
-    logger.info("Tablas creadas exitosamente")
-
-def init_db():
-    """Inicializa la base de datos con datos por defecto"""
-    db = SessionLocal()
-    try:
-        # Aquí podrías agregar la inicialización de datos por defecto
-        # Por ejemplo, crear un usuario administrador
-        from .initial_data import init_db as init_db_data
-        init_db_data(db)
-    except Exception as e:
-        logger.error(f"Error al inicializar la base de datos: {e}")
-        raise
-    finally:
-        db.close()
-
-# Crear tablas en la base de datos al iniciar
-create_tables()
-
-# Inicializar datos por defecto
-init_db()
-
-# Crear aplicación FastAPI
-app = FastAPI(
-    title=settings.APP_NAME,
-    description="API para el servicio de chatbot conversacional de Vambe.ai",
-    version=settings.APP_VERSION,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json"
-)
+# Crear la aplicación FastAPI
+app = create_app()
 
 # Configuración de CORS
 app.add_middleware(
@@ -63,36 +36,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Incluir rutas de la API
-app.include_router(
-    auth.router,
-    prefix="/api/v1/auth",
-    tags=["authentication"]
-)
+# Middleware para manejar excepciones de rate limiting
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        if "rate limit" in str(e).lower():
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Demasiadas solicitudes. Por favor, inténtalo de nuevo más tarde."}
+            )
+        raise
 
-app.include_router(
-    chat.router,
-    prefix="/api/v1/chat",
-    tags=["chat"]
-)
+# Eventos de inicio y apagado
+@app.on_event("startup")
+async def startup_event():
+    """Evento de inicio de la aplicación"""
+    # Inicializar el servicio de caché
+    await cache_service.connect()
+    
+    # Configurar rate limiting
+    await FastAPILimiter.init(
+        cache_service.redis,
+        prefix="rate_limiter",
+        retry_after="x-ratelimit-retry-after"
+    )
+    logger.info("Aplicación iniciada y servicios configurados")
 
-app.include_router(
-    conversations.router,
-    prefix="/api/v1/conversations",
-    tags=["conversations"]
-)
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Evento de apagado de la aplicación"""
+    # Cerrar conexiones
+    await cache_service.close()
+    logger.info("Aplicación detenida y recursos liberados")
 
-app.include_router(
-    messages.router,
-    prefix="/api/v1/messages",
-    tags=["messages"]
-)
-
-app.include_router(
-    documents.router,
-    prefix="/api/v1/documents",
-    tags=["documents"]
-)
+# Incluir routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["Conversaciones"])
+app.include_router(messages.router, prefix="/api/v1/messages", tags=["Mensajes"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documentos"])
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["Análisis"])
 
 # Endpoint de salud
 @app.get("/health", tags=["health"])

@@ -19,6 +19,8 @@ from .weaviate_service import weaviate_service
 from ..core.config import settings
 from ..core.security import get_password_hash
 from ..db.session import get_db
+from .cache_service import cache_service
+import hashlib
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -412,6 +414,15 @@ class ChatService:
         Returns:
             str: Contexto relevante formateado
         """
+        # Crear una clave única para la consulta
+        cache_key = f"context:{user_id}:{hashlib.md5(query.encode()).hexdigest()}"
+        
+        # Intentar obtener del caché primero
+        cached_context = await cache_service.get(cache_key)
+        if cached_context:
+            logger.info(f"Contexto obtenido de caché para la consulta: {query[:50]}...")
+            return cached_context
+            
         try:
             # Verificar si Weaviate está configurado
             if not weaviate_service.is_configured():
@@ -449,7 +460,12 @@ class ChatService:
                 
                 context_parts.append(f"   **Contenido:** {content}\n")
             
-            return "\n".join(context_parts)
+            context = "\n".join(context_parts)
+            
+            # Guardar en caché por 1 hora
+            await cache_service.set(cache_key, context, expire=3600)
+            
+            return context
             
         except Exception as e:
             logger.error(f"Error al obtener contexto de Weaviate: {str(e)}")
