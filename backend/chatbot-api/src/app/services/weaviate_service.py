@@ -114,59 +114,219 @@ class WeaviateService:
         except Exception as e:
             raise Exception(f"Error al indexar documento en Weaviate: {str(e)}")
     
-    async def search_documents(
-        self, 
-        query: str, 
-        user_id: str, 
-        limit: int = 5,
-        certainty: float = 0.7
-    ) -> List[SearchResult]:
+    async def search_documents(self, query: str, limit: int = 5, min_score: float = 0.7) -> List[SearchResult]:
         """
-        Busca documentos similares a la consulta
+        Busca documentos similares a la consulta usando búsqueda semántica.
         
         Args:
             query: Texto de búsqueda
-            user_id: ID del usuario que realiza la búsqueda
             limit: Número máximo de resultados a devolver
-            certainty: Umbral de similitud (0-1)
+            min_score: Puntuación mínima de similitud (0-1)
             
         Returns:
-            Lista de documentos relevantes
+            Lista de resultados de búsqueda
         """
         try:
+            # Generar embeddings para la consulta usando OpenAI
+            query_embedding = await openai_service.generate_embeddings(query)
+            
+            # Realizar la búsqueda en Weaviate
             result = (
                 self.client.query
-                .get("Document", ["content", "title", "source", "metadata"])
-                .with_where({
-                    "path": ["user_id"],
-                    "operator": "Equal",
-                    "valueString": user_id
+                .get("Document", ["title", "content", "source", "metadata"])
+                .with_near_vector({
+                    "vector": query_embedding[0],
+                    "certainty": min_score
                 })
-                .with_near_text({"concepts": [query]})
                 .with_limit(limit)
-                .with_additional(["certainty", "id"])
+                .with_additional(["id", "certainty"])
                 .do()
             )
             
-            if "errors" in result:
-                raise Exception(f"Error en la búsqueda: {result['errors']}")
-                
-            items = result.get("data", {}).get("Get", {}).get("Document", [])
+            # Procesar resultados
+            search_results = []
+            if "data" in result and "Get" in result["data"] and "Document" in result["data"]["Get"]:
+                for item in result["data"]["Get"]["Document"]:
+                    search_results.append(SearchResult(
+                        id=item["_additional"]["id"],
+                        title=item["title"],
+                        content=item["content"],
+                        source=item.get("source", ""),
+                        metadata=item.get("metadata", {}),
+                        score=item["_additional"]["certainty"]
+                    ))
             
-            return [
-                SearchResult(
-                    id=item["_additional"]["id"],
-                    content=item["content"],
-                    title=item.get("title", ""),
-                    source=item.get("source", ""),
-                    metadata=item.get("metadata", {}),
-                    score=item["_additional"].get("certainty", 0)
-                )
-                for item in items
-            ]
+            return search_results
             
         except Exception as e:
-            raise Exception(f"Error al buscar documentos: {str(e)}")
+            logger.error(f"Error en búsqueda semántica: {str(e)}")
+            return []
+            
+    async def get_embedding(self, text: str) -> List[float]:
+        """
+        Obtiene el embedding de un texto usando el modelo configurado en Weaviate.
+        
+        Args:
+            text: Texto a obtener el embedding
+            
+        Returns:
+            Lista de floats que representa el vector de embedding
+        """
+        try:
+            # Usar el cliente de Weaviate para generar el embedding
+            result = self.client.query.raw('''
+            {
+                  Get {
+                    OpenAI {
+                      _additional {
+                        generate(
+                          prompt: """{{text}}"""
+                        ) {
+                          singleResult {
+                            vector
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            '''.replace('{{text}}', text.replace('"', '\\"')))
+            
+            # Extraer el vector del resultado
+            if result and 'data' in result and 'Get' in result['data'] and 'OpenAI' in result['data']['Get']:
+                openai_data = result['data']['Get']['OpenAI']
+                if openai_data and len(openai_data) > 0:
+                    vector = openai_data[0]['_additional']['generate']['singleResult']['vector']
+                    return vector
+            
+            # Si falla, usar directamente la API de OpenAI
+            import openai
+            from openai import OpenAI
+            
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            response = client.embeddings.create(
+                input=text,
+                model="text-embedding-3-small"
+            )
+            return response.data[0].embedding
+            
+        except Exception as e:
+            logger.error(f"Error al obtener embedding: {str(e)}", exc_info=True)
+            raise
+    
+    async def semantic_search(
+        self,
+        query_embedding: List[float],
+        limit: int = 10,
+        min_score: float = 0.5,
+        filters: Optional[Dict[str, Any]] = None,
+        include_vectors: bool = False,
+        include_metadata: bool = True,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Realiza una búsqueda semántica en los documentos indexados usando un vector de embedding.
+        
+        Args:
+            query_embedding: Vector de embedding de la consulta
+            limit: Número máximo de resultados a devolver
+            min_score: Puntuación mínima de relevancia (0-1)
+            filters: Filtros adicionales para la búsqueda
+            include_vectors: Si es True, incluye los vectores en los resultados
+            include_metadata: Si es True, incluye los metadatos en los resultados
+            
+        Returns:
+            Lista de documentos relevantes con metadatos y puntuación
+        """
+        try:
+            # Construir la consulta de búsqueda
+            query_builder = (
+                self.client.query
+                .get("Document", 
+                     ["content", "title", "source", "metadata", "doc_id", "user_id"])
+                .with_near_vector({
+                    "vector": query_embedding,
+                    "certainty": min_score
+                })
+                .with_limit(limit)
+                .with_additional(["id", "certainty", "distance", "vector"])
+            )
+            
+            # Aplicar filtros
+            if filters:
+                filter_conditions = []
+                for key, value in filters.items():
+                    if value is None:
+                        continue
+                        
+                    if isinstance(value, (list, tuple, set)):
+                        # Para filtros con múltiples valores (IN)
+                        if value:  # Solo agregar si hay valores
+                            value_filter = {
+                                "operator": "Or",
+                                "operands": [
+                                    {"path": [key], "operator": "Equal", "valueString": str(v)}
+                                    for v in value
+                                ]
+                            }
+                            filter_conditions.append(value_filter)
+                    else:
+                        # Para filtros con un solo valor
+                        filter_conditions.append({
+                            "path": [key],
+                            "operator": "Equal",
+                            "valueString": str(value)
+                        })
+                
+                if filter_conditions:
+                    if len(filter_conditions) > 1:
+                        # Combinar múltiples condiciones con AND
+                        combined_filter = {
+                            "operator": "And",
+                            "operands": filter_conditions
+                        }
+                        query_builder = query_builder.with_where(combined_filter)
+                    else:
+                        query_builder = query_builder.with_where(filter_conditions[0])
+            
+            # Ejecutar la consulta
+            result = query_builder.do()
+            
+            # Procesar resultados
+            search_results = []
+            if "data" in result and "Get" in result["data"] and "Document" in result["data"]["Get"]:
+                for item in result["data"]["Get"]["Document"]:
+                    result_item = {
+                        "id": item["_additional"]["id"],
+                        "document_id": int(item.get("doc_id")) if item.get("doc_id") else None,
+                        "title": item.get("title", ""),
+                        "text": item.get("content", ""),
+                        "source": item.get("source", ""),
+                        "score": float(item["_additional"].get("certainty", 0.0)),
+                        "distance": float(item["_additional"].get("distance", 0.0))
+                    }
+                    
+                    # Incluir metadatos si se solicita
+                    if include_metadata:
+                        metadata = item.get("metadata", {})
+                        if isinstance(metadata, str):
+                            try:
+                                metadata = json.loads(metadata)
+                            except (json.JSONDecodeError, TypeError):
+                                metadata = {}
+                        result_item["metadata"] = metadata
+                    
+                    # Incluir vector si se solicita
+                    if include_vectors and "vector" in item["_additional"]:
+                        result_item["vector"] = item["_additional"]["vector"]
+                    
+                    search_results.append(result_item)
+            
+            return search_results
+            
+        except Exception as e:
+            logger.error(f"Error en búsqueda semántica: {str(e)}", exc_info=True)
+            raise
     
     async def delete_document(self, doc_id: str) -> bool:
         """

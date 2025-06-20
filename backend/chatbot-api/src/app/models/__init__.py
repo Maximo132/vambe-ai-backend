@@ -12,6 +12,7 @@ from .user import User, UserStatus
 from .login_history import LoginHistory
 from .auth_token import AuthToken
 from .chat import Conversation as ChatConversation, ConversationStatus, MessageType
+from .knowledge_base import KnowledgeBase, KnowledgeDocument
 
 # Lista de todos los modelos para facilitar la importación
 __all__ = [
@@ -27,6 +28,8 @@ __all__ = [
     "User",
     "LoginHistory",
     "AuthToken",
+    "KnowledgeBase",
+    "KnowledgeDocument",
     
     # Enumeraciones
     "MessageRole",
@@ -48,3 +51,4 @@ import app.models.document
 import app.models.user
 import app.models.login_history
 import app.models.auth_token
+import app.models.knowledge_base

@@ -1,5 +1,5 @@
 from enum import Enum
-from sqlalchemy import Column, String, Text, Integer, JSON, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Text, Integer, JSON, DateTime, ForeignKey, Enum as SQLEnum, Table
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -48,6 +48,14 @@ class Document(Base):
     
     # Relaciones
     user = relationship("User", back_populates="documents")
+    knowledge_bases = relationship(
+        "KnowledgeBase",
+        secondary="knowledge_base_documents",
+        back_populates="documents"
+    )
+    
+    # Configuración para búsqueda vectorial
+    weaviate_class = "Document"
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

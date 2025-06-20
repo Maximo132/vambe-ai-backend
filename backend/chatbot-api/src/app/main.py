@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from .core.config import settings
 from .db import init_db, get_async_db, get_db, async_engine, engine
-from .api.endpoints import chat, conversations, messages, auth, documents, analysis
+from .api.endpoints import chat, conversations, messages, auth, documents, analysis, knowledge_bases
 from .models import user as user_models
-from .models import chat as chat_models, document as document_models
+from .models import chat as chat_models, document as document_models, knowledge_base as knowledge_base_models
 from .services.cache_service import cache_service
 
 # Configurar logging
@@ -118,6 +118,7 @@ async def shutdown_event():
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
 app.include_router(profile.router, prefix="/api/v1/profile", tags=["Perfil de Usuario"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(knowledge_bases.router, prefix="/api/v1/knowledge-bases", tags=["Bases de Conocimiento"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["Conversaciones"])
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["Mensajes"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documentos"])

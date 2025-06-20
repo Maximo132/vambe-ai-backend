@@ -211,6 +211,18 @@ class DocumentSearchQuery(BaseModel):
         le=1.0, 
         description="Puntuación mínima de relevancia (0-1)"
     )
+    filters: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Filtros adicionales para la búsqueda (opcional)"
+    )
+    include_vectors: bool = Field(
+        False,
+        description="Incluir vectores de embedding en los resultados (para depuración)"
+    )
+    include_metadata: bool = Field(
+        True,
+        description="Incluir metadatos en los resultados"
+    )
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -218,7 +230,10 @@ class DocumentSearchQuery(BaseModel):
                 "query": "contrato de servicios",
                 "knowledge_base_id": 1,
                 "limit": 10,
-                "min_score": 0.6
+                "min_score": 0.6,
+                "filters": {"status": "completed"},
+                "include_vectors": False,
+                "include_metadata": True
             }
         }
     )
@@ -235,6 +250,10 @@ class DocumentSearchResult(BaseModel):
         None,
         description="Metadatos del fragmento"
     )
+    vector: Optional[List[float]] = Field(
+        None,
+        description="Vector de embedding del fragmento (solo para depuración)"
+    )
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -243,11 +262,22 @@ class DocumentSearchResult(BaseModel):
                     "id": 1,
                     "title": "Contrato de Servicios",
                     "file_type": "pdf",
-                    "status": "completed"
+                    "status": "completed",
+                    "knowledge_bases": [
+                        {
+                            "id": 1,
+                            "name": "Contratos",
+                            "description": "Base de conocimiento para contratos legales",
+                            "is_public": False,
+                            "added_at": "2023-01-01T12:00:00",
+                            "metadata": {"department": "legal"}
+                        }
+                    ]
                 },
                 "score": 0.85,
                 "chunk_text": "... cláusulas del contrato de servicios ...",
-                "chunk_metadata": {"page": 5, "section": "Términos y condiciones"}
+                "chunk_metadata": {"page": 5, "section": "Términos y condiciones"},
+                "vector": [0.1, 0.2, 0.3, ...]
             }
         }
     )
