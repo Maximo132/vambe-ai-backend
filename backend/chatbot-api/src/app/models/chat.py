@@ -1,18 +1,14 @@
-from datetime import datetime
 import enum
+from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, JSON, Enum
 from sqlalchemy.orm import relationship
 from app.models.base import Base
+from app.models.enums import MessageRole  # Importar desde enums.py
 
 class ConversationStatus(str, enum.Enum):
     ACTIVE = "active"
     ARCHIVED = "archived"
     DELETED = "deleted"
-
-class MessageRole(str, enum.Enum):
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
 
 class MessageType(str, enum.Enum):
     TEXT = "text"

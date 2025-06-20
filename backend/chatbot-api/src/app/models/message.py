@@ -3,16 +3,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
-from enum import Enum as PyEnum
 
 from ..db.base_class import Base
-
-class MessageRole(str, PyEnum):
-    """Roles de los mensajes en el chat."""
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    FUNCTION = "function"
+from .enums import MessageRole
 
 class Message(Base):
     """

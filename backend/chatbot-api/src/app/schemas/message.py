@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List, Union
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
-from app.models.conversation import MessageRole
+from app.models import MessageRole
 
 class MessageBase(BaseModel):
     """Base schema para mensajes.

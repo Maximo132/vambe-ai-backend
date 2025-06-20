@@ -48,6 +48,49 @@ def setup_events(app: FastAPI) -> None:
         
         # Inicializar la base de datos
         await init_db()
+        
+        # Crear directorio de subidas si no existe
+        if settings.STORAGE_PROVIDER == 'local':
+            import os
+            from pathlib import Path
+            
+            upload_dir = Path(settings.UPLOAD_DIR)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(upload_dir, 0o755)
+            logger.info(f"Directorio de subidas listo: {upload_dir}")
+        
+        # Crear un usuario administrador por defecto si no existe
+        if settings.CREATE_DEFAULT_ADMIN:
+            from sqlalchemy.orm import Session
+            from ..db.session import SessionLocal
+            from ..models.user import User, UserRole
+            from ..core.security import get_password_hash
+            from ..core.config import settings
+            
+            db = SessionLocal()
+            try:
+                admin = db.query(User).filter(User.username == settings.DEFAULT_ADMIN_USERNAME).first()
+                if not admin:
+                    admin = User(
+                        username=settings.DEFAULT_ADMIN_USERNAME,
+                        email=settings.DEFAULT_ADMIN_EMAIL,
+                        hashed_password=get_password_hash(settings.DEFAULT_ADMIN_PASSWORD),
+                        full_name="Administrador",
+                        role=UserRole.ADMIN,
+                        is_superuser=True,
+                        is_verified=True,
+                        is_active=True
+                    )
+                    db.add(admin)
+                    db.commit()
+                    logger.info(f"Usuario administrador por defecto '{settings.DEFAULT_ADMIN_USERNAME}' creado")
+                else:
+                    logger.info(f"Usuario administrador '{settings.DEFAULT_ADMIN_USERNAME}' ya existe")
+            except Exception as e:
+                logger.error(f"Error al crear el usuario administrador: {e}")
+                db.rollback()
+            finally:
+                db.close()
         logger.info("Base de datos inicializada")
         
         # Inicializar el servicio de caché

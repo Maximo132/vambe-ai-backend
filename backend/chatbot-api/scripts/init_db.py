@@ -123,7 +123,7 @@ def run_migrations(modules: dict) -> None:
         logger.exception("Detalles completos del error:")
         return False
 
-def create_initial_data(db_session) -> None:
+def create_initial_data(db_session):
     """
     Crea datos iniciales en la base de datos.
     
@@ -131,28 +131,44 @@ def create_initial_data(db_session) -> None:
         db_session: Sesión de base de datos
     """
     logger = logging.getLogger(__name__)
+    logger.info("Verificando datos iniciales...")
     
     try:
         from app.models.user import User, UserRole
         from app.core.security import get_password_hash
+        from app.core.config import settings
         
-        # Verificar si ya existe un usuario administrador
-        admin = db_session.query(User).filter(User.email == "admin@vambe.ai").first()
+        # Verificar si ya existe el usuario administrador por defecto
+        admin = db_session.query(User).filter(
+            User.username == settings.DEFAULT_ADMIN_USERNAME
+        ).first()
         
-        if not admin:
-            logger.info("Creando usuario administrador por defecto...")
-            admin = User(
-                username="admin",
-                email="admin@vambe.ai",
-                hashed_password=get_password_hash("admin123"),
+        if not admin and settings.CREATE_DEFAULT_ADMIN:
+            logger.info(f"Creando usuario administrador por defecto: {settings.DEFAULT_ADMIN_USERNAME}")
+            
+            admin_user = User(
+                username=settings.DEFAULT_ADMIN_USERNAME,
+                email=settings.DEFAULT_ADMIN_EMAIL,
+                hashed_password=get_password_hash(settings.DEFAULT_ADMIN_PASSWORD),
+                full_name="Administrador",
                 role=UserRole.ADMIN,
-                is_active=True,
+                is_superuser=True,
                 is_verified=True,
-                first_name="Administrador",
-                last_name="Sistema"
+                is_active=True
             )
-            db_session.add(admin)
+            
+            db_session.add(admin_user)
             db_session.commit()
+            logger.info(f"Usuario administrador '{settings.DEFAULT_ADMIN_USERNAME}' creado exitosamente")
+            
+            # Mostrar credenciales (solo en desarrollo)
+            if settings.DEBUG:
+                logger.info("=== Credenciales de administrador ===")
+                logger.info(f"Usuario: {settings.DEFAULT_ADMIN_USERNAME}")
+                logger.info(f"Contraseña: {settings.DEFAULT_ADMIN_PASSWORD}")
+                logger.info("===================================")
+        elif admin:
+            logger.info(f"El usuario administrador '{settings.DEFAULT_ADMIN_USERNAME}' ya existe")
             logger.info("Usuario administrador creado exitosamente.")
         else:
             logger.info("El usuario administrador ya existe.")

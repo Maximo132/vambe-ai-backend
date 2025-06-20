@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship, Session, backref
 from sqlalchemy.sql import func, and_, or_
 from sqlalchemy.sql.schema import Index
 from app.models.base import Base
-import enum
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, TYPE_CHECKING, Set
 import uuid
@@ -28,17 +27,7 @@ user_followers = Table(
     Column('created_at', DateTime, default=datetime.utcnow)
 )
 
-class UserRole(str, enum.Enum):
-    """Roles de usuario en el sistema"""
-    SUPERADMIN = "superadmin"  # Acceso total al sistema
-    ADMIN = "admin"           # Administradores de la plataforma
-    AGENT = "agent"           # Agentes de soporte
-    CUSTOMER = "customer"      # Clientes finales
-    GUEST = "guest"           # Usuarios invitados (acceso limitado)
-    
-    @classmethod
-    def has_value(cls, value):
-        return value in cls._value2member_map_
+from .enums import UserRole
 
 class User(Base):
     """Modelo de usuario para autenticación y gestión de perfiles"""

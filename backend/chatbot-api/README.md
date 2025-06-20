@@ -46,25 +46,126 @@ API de backend para el sistema de chatbot conversacional de Vambe.ai, construido
    source venv/bin/activate  # En Windows: venv\Scripts\activate
    ```
 
-3. Instala las dependencias:
+3. Copia el archivo de ejemplo de variables de entorno y configúralo:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edita el archivo `.env` y configura al menos las siguientes variables:
+   - `SECRET_KEY`: Una clave secreta segura para la aplicación
+   - `JWT_SECRET`: Una clave secreta segura para JWT
+   - `DATABASE_URL`: URL de conexión a PostgreSQL
+   - `DEFAULT_ADMIN_PASSWORD`: Cambia la contraseña por defecto del administrador
+
+4. Instala las dependencias:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. Copia el archivo de ejemplo de variables de entorno y configúralo:
+5. Inicializa la base de datos y crea el usuario administrador:
    ```bash
-   cp .env.example .env
-   ```
-   Edita el archivo `.env` con tus configuraciones.
-
-5. Crea la base de datos PostgreSQL y ejecuta las migraciones:
-   ```bash
+   # Aplica migraciones
    alembic upgrade head
+   
+   # Crea el usuario administrador (opcional, se crea automáticamente al iniciar la aplicación si CREATE_DEFAULT_ADMIN=True)
+   python -m scripts.init_db
+   ```
+   
+   Alternativamente, puedes ejecutar solo el script de creación de administrador:
+   ```bash
+   python -m scripts.create_admin
    ```
 
-6. Inicia la aplicación:
+6. Inicia el servidor de desarrollo:
    ```bash
-   uvicorn app.main:app --reload
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+   
+   La aplicación estará disponible en `http://localhost:8000`
+   
+   - Documentación interactiva (Swagger UI): `http://localhost:8000/docs`
+   - Documentación alternativa (ReDoc): `http://localhost:8000/redoc`
+
+## Acceso al panel de administración
+
+1. Inicia sesión en la ruta `/api/v1/auth/login` con las siguientes credenciales por defecto:
+   - **Usuario:** admin
+   - **Contraseña:** admin123 (o la que hayas configurado en `.env`)
+
+2. Usa el token JWT devuelto para autenticarte en las rutas protegidas.
+
+## Configuración del entorno de producción
+
+Para entornos de producción, asegúrate de configurar adecuadamente las siguientes variables de entorno:
+
+```env
+# Configuración de seguridad
+DEBUG=False
+SECRET_KEY=una_clave_segura_y_aleatoria
+JWT_SECRET=otra_clave_segura_y_aleatoria
+
+# Configuración de base de datos
+DATABASE_URL=postgresql://usuario:contraseña@servidor:5432/nombre_bd
+
+# Configuración de Redis (opcional, para caché y rate limiting)
+REDIS_URL=redis://localhost:6379/0
+
+# Configuración de almacenamiento
+STORAGE_PROVIDER=s3  # o 'minio' para desarrollo
+AWS_ACCESS_KEY_ID=tu_access_key
+AWS_SECRET_ACCESS_KEY=tu_secret_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET_NAME=tu-bucket
+
+# Configuración de OpenAI
+OPENAI_API_KEY=tu_api_key_de_openai
+
+# Configuración de Weaviate (opcional, para búsqueda vectorial)
+WEAVIATE_URL=tu_servidor_weaviate
+WEAVIATE_API_KEY=tu_api_key_weaviate
+```
+
+## Variables de entorno importantes
+
+| Variable | Descripción | Valor por defecto |
+|----------|-------------|-------------------|
+| `DEBUG` | Modo depuración | `False` |
+| `SECRET_KEY` | Clave secreta para la aplicación | Requerido |
+| `JWT_SECRET` | Clave para firmar tokens JWT | Requerido |
+| `DATABASE_URL` | URL de conexión a PostgreSQL | Requerido |
+| `CREATE_DEFAULT_ADMIN` | Crear usuario administrador al iniciar | `True` |
+| `DEFAULT_ADMIN_USERNAME` | Nombre de usuario del administrador | `admin` |
+| `DEFAULT_ADMIN_EMAIL` | Email del administrador | `admin@vambe.ai` |
+| `DEFAULT_ADMIN_PASSWORD` | Contraseña del administrador | `admin123` |
+
+## Despliegue con Docker
+
+1. Asegúrate de tener Docker y Docker Compose instalados.
+
+2. Crea un archivo `docker-compose.override.yml` para personalizar la configuración:
+   ```yaml
+   version: '3.8'
+   
+   services:
+     api:
+       environment:
+         - DEBUG=False
+         - SECRET_KEY=tu_clave_secreta
+         - JWT_SECRET=tu_clave_jwt
+         - DATABASE_URL=postgresql://postgres:postgres@db:5432/vambeai
+         - CREATE_DEFAULT_ADMIN=True
+         - DEFAULT_ADMIN_PASSWORD=cambia_esta_contraseña
+         - OPENAI_API_KEY=tu_api_key
+   ```
+
+3. Inicia los servicios:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. Verifica los logs:
+   ```bash
+   docker-compose logs -f
    ```
 
 La aplicación estará disponible en `http://localhost:8000`

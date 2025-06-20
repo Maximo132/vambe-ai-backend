@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 from app.schemas.message import Message
-from app.models.conversation import MessageRole
+from app.models import MessageRole
 
 class ConversationBase(BaseModel):
     """Base schema para conversaciones.

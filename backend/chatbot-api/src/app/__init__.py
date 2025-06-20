@@ -12,9 +12,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Importar modelos para que estén disponibles cuando se importe el paquete
-from .models.chat import Conversation, Message, ConversationStatus, MessageRole
-from .models.user import User, UserRole, UserStatus
-from .models.base import BaseModel
+from .models import (
+    BaseModel,
+    Conversation,
+    ChatConversation,
+    Message,
+    User,
+    # Enumeraciones
+    MessageRole,
+    UserRole,
+    UserStatus,
+    ConversationStatus,
+    MessageType
+)
 
 # Importar configuraciones
 try:
@@ -34,13 +44,17 @@ except ImportError as e:
 __all__ = [
     # Modelos
     'Conversation',
+    'ChatConversation',
     'Message',
-    'ConversationStatus',
-    'MessageRole',
     'User',
+    'BaseModel',
+    
+    # Enumeraciones
+    'MessageRole',
     'UserRole',
     'UserStatus',
-    'BaseModel',
+    'ConversationStatus',
+    'MessageType',
     
     # Configuración
     'settings',

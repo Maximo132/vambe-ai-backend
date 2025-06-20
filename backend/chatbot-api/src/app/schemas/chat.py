@@ -4,12 +4,7 @@ from typing import List, Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, UUID4
 from uuid import UUID
 
-class MessageRole(str, Enum):
-    """Roles de los mensajes en el chat."""
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-    FUNCTION = "function"
+from app.models import MessageRole
 
 class MessageType(str, Enum):
     """Tipos de mensajes."""

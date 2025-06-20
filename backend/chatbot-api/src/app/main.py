@@ -116,6 +116,7 @@ async def shutdown_event():
 
 # Incluir routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
+app.include_router(profile.router, prefix="/api/v1/profile", tags=["Perfil de Usuario"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["Conversaciones"])
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["Mensajes"])

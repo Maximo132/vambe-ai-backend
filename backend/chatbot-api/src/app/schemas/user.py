@@ -17,7 +17,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     is_active: Optional[bool] = True
-    role: Optional[UserRole] = UserRole.CLIENT
+    role: Optional[UserRole] = UserRole.CUSTOMER
 
     class Config:
         from_attributes = True

@@ -1,26 +1,41 @@
 # Importar la clase Base primero para evitar importaciones circulares
 from .base import Base, BaseModel
 
+# Importar las enumeraciones primero
+from .enums import MessageRole, UserRole
+
 # Importar los modelos individuales
 from .conversation import Conversation
-from .message import Message, MessageRole
-from .document import Document
-from .user import User, UserRole
+from .message import Message
+from .document import Document, DocumentType, DocumentStatus
+from .user import User, UserStatus
 from .login_history import LoginHistory
 from .auth_token import AuthToken
+from .chat import Conversation as ChatConversation, ConversationStatus, MessageType
 
 # Lista de todos los modelos para facilitar la importación
 __all__ = [
+    # Clases base
     "Base",
     "BaseModel",
+    
+    # Modelos
     "Conversation",
+    "ChatConversation",
     "Message",
-    "MessageRole",
     "Document",
     "User",
-    "UserRole",
     "LoginHistory",
-    "AuthToken"
+    "AuthToken",
+    
+    # Enumeraciones
+    "MessageRole",
+    "UserRole",
+    "UserStatus",
+    "ConversationStatus",
+    "MessageType",
+    "DocumentType",
+    "DocumentStatus"
 ]
 
 # Importar todos los modelos para que SQLAlchemy los registre

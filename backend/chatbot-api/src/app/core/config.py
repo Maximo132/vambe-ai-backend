@@ -26,11 +26,38 @@ class Settings(BaseSettings):
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     API_V1_STR: str = "/api/v1"
     
+    # Configuración de JWT
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "your-jwt-secret-key-here")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 horas por defecto
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))  # 30 días por defecto
+    
+    # Configuración de administrador por defecto
+    CREATE_DEFAULT_ADMIN: bool = os.getenv("CREATE_DEFAULT_ADMIN", "True").lower() in ("true", "1", "t")
+    DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+    DEFAULT_ADMIN_EMAIL: str = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@vambe.ai")
+    DEFAULT_ADMIN_PASSWORD: str = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")  # Cambiar en producción
+    
     # Configuración de CORS
     CORS_ORIGINS: List[str] = os.getenv(
         "CORS_ORIGINS", 
         "http://localhost:3000,http://frontend:3000,http://localhost:8000"
     ).split(",")
+    
+    # Configuración de almacenamiento
+    STORAGE_PROVIDER: str = os.getenv("STORAGE_PROVIDER", "local").lower()
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))
+    MAX_UPLOAD_SIZE: int = int(os.getenv("MAX_UPLOAD_SIZE", "5242880"))  # 5MB por defecto
+    ALLOWED_EXTENSIONS: List[str] = os.getenv(
+        "ALLOWED_EXTENSIONS", 
+        "jpg,jpeg,png,gif,pdf,doc,docx,txt"
+    ).split(",")
+    
+    # Configuración de AWS S3 (opcional, solo si STORAGE_PROVIDER=s3)
+    AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
+    AWS_S3_BUCKET_NAME: str = os.getenv("AWS_S3_BUCKET_NAME", "vambe-ai-uploads")
     
     # Configuración de la base de datos
     DATABASE_URL: str = os.getenv(
